@@ -20,6 +20,10 @@ public static class PrefabManager
     private static readonly Dictionary<string, GameObject?> CachedPrefabs = [];
     private static readonly Dictionary<string, GameObject?> TempPrefabs = [];
 
+    private static readonly object CachedTypesLock = new();
+    private static readonly object CachedPrefabsLock = new();
+    private static readonly object TempPrefabsLock = new();
+
     private static T? LoadPrefab<T>(Transform? parent = null, int cacheType = 0) where T : Component
     {
         var il2cppType = Il2CppType.Of<T>();
@@ -33,17 +37,24 @@ public static class PrefabManager
         instance.name = instance.name.Replace("(Clone)", string.Empty);
 
         string typeName = typeof(T).FullName ?? throw new InvalidOperationException("Component namespace cannot be null.");
-        if (cacheType == 1)
+
+        lock (cacheType == 1 ? CachedTypesLock : TempPrefabsLock)
         {
-            instance.name += "(Prefab)";
-            CachedTypes.Add(typeName);
-            CachedPrefabs[typeName] = instance.gameObject;
-            UnityEngine.Object.DontDestroyOnLoad(instance.gameObject);
-        }
-        else if (cacheType == 2)
-        {
-            instance.name += "(Temp)";
-            TempPrefabs[typeName] = instance;
+            if (cacheType == 1)
+            {
+                instance.name += "(Prefab)";
+                lock (CachedTypesLock)
+                {
+                    CachedTypes.Add(typeName);
+                    CachedPrefabs[typeName] = instance.gameObject;
+                }
+                UnityEngine.Object.DontDestroyOnLoad(instance.gameObject);
+            }
+            else if (cacheType == 2)
+            {
+                instance.name += "(Temp)";
+                TempPrefabs[typeName] = instance;
+            }
         }
 
         return instance.GetComponent<T>();
@@ -61,7 +72,7 @@ public static class PrefabManager
     }
 
     /// <summary>
-    /// Retrieves a temporarily cached prefab of type <typeparamref name="T"/>.
+    /// Retrieves a temporarily cached prefab of type <typeparamref name="T"/> from the cache.
     /// If the prefab is not already cached, it will be loaded and temporarily cached for future use.
     /// Note: Temporarily cached prefabs can be destroyed on load, unlike cached prefabs.
     /// </summary>
@@ -71,9 +82,12 @@ public static class PrefabManager
     {
         string typeName = typeof(T).FullName ?? throw new InvalidOperationException("Component namespace cannot be null.");
 
-        if (TempPrefabs.TryGetValue(typeName, out var obj) && obj != null)
+        lock (TempPrefabsLock)
         {
-            return obj.GetComponent<T>();
+            if (TempPrefabs.TryGetValue(typeName, out var obj) && obj != null)
+            {
+                return obj.GetComponent<T>();
+            }
         }
 
         return LoadPrefab<T>(null, 2);
@@ -90,10 +104,13 @@ public static class PrefabManager
     {
         string typeName = typeof(T).FullName ?? throw new InvalidOperationException("Component namespace cannot be null.");
 
-        if (!CachedPrefabs.TryGetValue(typeName, out var obj) || obj == null)
-            throw new InvalidOperationException($"Unable to get a prefab of type {typeof(T).Name} that hasn't been cached!");
+        lock (CachedPrefabsLock)
+        {
+            if (!CachedPrefabs.TryGetValue(typeName, out var obj) || obj == null)
+                throw new InvalidOperationException($"Unable to get a prefab of type {typeof(T).Name} that hasn't been cached!");
 
-        return obj.GetComponent<T>();
+            return obj.GetComponent<T>();
+        }
     }
 
     /// <summary>
@@ -109,10 +126,13 @@ public static class PrefabManager
     {
         string typeName = typeof(T).FullName ?? throw new InvalidOperationException("Component namespace cannot be null.");
 
-        if (CachedTypes.Contains(typeName))
-            throw new InvalidOperationException("Unable to cache a prefab that's already been cached!");
+        lock (CachedTypesLock)
+        {
+            if (CachedTypes.Contains(typeName))
+                throw new InvalidOperationException("Unable to cache a prefab that's already been cached!");
 
-        LoadPrefab<T>(null, 1);
+            LoadPrefab<T>(null, 1);
+        }
     }
 
     /// <summary>
@@ -125,13 +145,16 @@ public static class PrefabManager
     {
         string typeName = typeof(T).FullName ?? throw new InvalidOperationException("Component namespace cannot be null.");
 
-        if (!CachedPrefabs.TryGetValue(typeName, out var obj))
-            throw new InvalidOperationException($"Unable to uncache a prefab of type {typeof(T).Name} that hasn't been cached!");
+        lock (CachedPrefabsLock)
+        {
+            if (!CachedPrefabs.TryGetValue(typeName, out var obj))
+                throw new InvalidOperationException($"Unable to uncache a prefab of type {typeof(T).Name} that hasn't been cached!");
 
-        CachedTypes.Remove(typeName);
-        CachedPrefabs.Remove(typeName);
+            CachedTypes.Remove(typeName);
+            CachedPrefabs.Remove(typeName);
 
-        if (obj) UnityEngine.Object.Destroy(obj);
+            if (obj) UnityEngine.Object.Destroy(obj);
+        }
     }
 
     /// <summary>
@@ -139,12 +162,15 @@ public static class PrefabManager
     /// </summary>
     public static void UncacheAll()
     {
-        foreach (var obj in CachedPrefabs.Values)
+        lock (CachedPrefabsLock)
         {
-            if (obj) UnityEngine.Object.Destroy(obj);
-        }
+            foreach (var obj in CachedPrefabs.Values)
+            {
+                if (obj) UnityEngine.Object.Destroy(obj);
+            }
 
-        CachedPrefabs.Clear();
-        CachedTypes.Clear();
+            CachedPrefabs.Clear();
+            CachedTypes.Clear();
+        }
     }
 }
