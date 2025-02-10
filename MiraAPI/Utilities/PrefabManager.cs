@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-namespace TheBetterRoles.AmongUsPrefabs;
+namespace MiraAPI.Utilities;
 
 // Original code from: https://github.com/D1GQ/AmongUsPrefabsAPI
 
