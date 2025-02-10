@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-namespace MiraAPI.Utilities;
+namespace TheBetterRoles.AmongUsPrefabs;
 
 // Original code from: https://github.com/D1GQ/AmongUsPrefabsAPI
 
@@ -16,36 +16,37 @@ namespace MiraAPI.Utilities;
 /// </summary>
 public static class PrefabManager
 {
-    private static readonly List<string> CachedTypes = [];
-    private static readonly Dictionary<string, GameObject?> Cached = [];
-    private static readonly Dictionary<string, GameObject?> TempCached = [];
+    private static readonly HashSet<string> CachedTypes = [];
+    private static readonly Dictionary<string, GameObject?> CachedPrefabs = [];
+    private static readonly Dictionary<string, GameObject?> TempPrefabs = [];
 
     private static T? LoadPrefab<T>(Transform? parent = null, int cacheType = 0) where T : Component
     {
-        string name = typeof(T).Name;
-        Component? obj = Resources.FindObjectsOfTypeAll(Il2CppType.Of<T>()).FirstOrDefault(com => com.Cast<T>().GetIl2CppType() == Il2CppType.Of<T>())?.Cast<T>();
-        if (obj != null)
+        var il2cppType = Il2CppType.Of<T>();
+        var component = Resources.FindObjectsOfTypeAll(il2cppType)
+            .FirstOrDefault(com => com.GetIl2CppType() == il2cppType)
+            ?.Cast<T>();
+
+        if (component == null) return null;
+
+        var instance = UnityEngine.Object.Instantiate(component.gameObject, parent);
+        instance.name = instance.name.Replace("(Clone)", string.Empty);
+
+        string typeName = typeof(T).FullName ?? throw new InvalidOperationException("Component namespace cannot be null.");
+        if (cacheType == 1)
         {
-            var instance = parent != null ? UnityEngine.Object.Instantiate(obj.gameObject, parent) : UnityEngine.Object.Instantiate(obj.gameObject);
-
-            instance.name = instance.name.Replace("(Clone)", string.Empty);
-            if (cacheType == 1)
-            {
-                instance.name += "(Prefab)";
-                CachedTypes.Add(name);
-                Cached[name] = instance.gameObject;
-                UnityEngine.Object.DontDestroyOnLoad(instance.gameObject);
-            }
-            else if (cacheType == 2)
-            {
-                instance.name += "(Temp)";
-                TempCached[name] = instance;
-            }
-
-            return instance.GetComponent<T>();
+            instance.name += "(Prefab)";
+            CachedTypes.Add(typeName);
+            CachedPrefabs[typeName] = instance.gameObject;
+            UnityEngine.Object.DontDestroyOnLoad(instance.gameObject);
+        }
+        else if (cacheType == 2)
+        {
+            instance.name += "(Temp)";
+            TempPrefabs[typeName] = instance;
         }
 
-        return null;
+        return instance.GetComponent<T>();
     }
 
     /// <summary>
@@ -68,7 +69,9 @@ public static class PrefabManager
     /// <returns>An instance of the requested prefab component if found, otherwise null.</returns>
     public static T? GetTempPrefab<T>() where T : Component
     {
-        if (TempCached.TryGetValue(typeof(T).Name, out var obj) && obj != null)
+        string typeName = typeof(T).FullName ?? throw new InvalidOperationException("Component namespace cannot be null.");
+
+        if (TempPrefabs.TryGetValue(typeName, out var obj) && obj != null)
         {
             return obj.GetComponent<T>();
         }
@@ -85,15 +88,12 @@ public static class PrefabManager
     /// <exception cref="InvalidOperationException">Thrown if the requested prefab is not cached.</exception>
     public static T? GetCachedPrefab<T>() where T : Component
     {
-        if (!CachedTypes.Contains(typeof(T).Name))
-            throw new InvalidOperationException("Unable to get a prefab that hasn't been cached!");
+        string typeName = typeof(T).FullName ?? throw new InvalidOperationException("Component namespace cannot be null.");
 
-        if (Cached.TryGetValue(typeof(T).Name, out var obj) && obj != null)
-        {
-            return obj.GetComponent<T>();
-        }
+        if (!CachedPrefabs.TryGetValue(typeName, out var obj) || obj == null)
+            throw new InvalidOperationException($"Unable to get a prefab of type {typeof(T).Name} that hasn't been cached!");
 
-        return null;
+        return obj.GetComponent<T>();
     }
 
     /// <summary>
@@ -107,7 +107,9 @@ public static class PrefabManager
     /// </exception>
     public static void CatchPrefab<T>() where T : Component
     {
-        if (CachedTypes.Contains(typeof(T).Name))
+        string typeName = typeof(T).FullName ?? throw new InvalidOperationException("Component namespace cannot be null.");
+
+        if (CachedTypes.Contains(typeName))
             throw new InvalidOperationException("Unable to cache a prefab that's already been cached!");
 
         LoadPrefab<T>(null, 1);
@@ -121,27 +123,29 @@ public static class PrefabManager
     /// <exception cref="InvalidOperationException">Thrown if the prefab is not cached.</exception>
     public static void UncachePrefab<T>() where T : Component
     {
-        if (!CachedTypes.Contains(typeof(T).Name))
-            throw new InvalidOperationException("Unable to uncache a prefab that hasn't been cached!");
+        string typeName = typeof(T).FullName ?? throw new InvalidOperationException("Component namespace cannot be null.");
 
-        if (Cached.TryGetValue(typeof(T).Name, out var obj))
-        {
-            CachedTypes.Remove(typeof(T).Name);
-            Cached.Remove(typeof(T).Name);
-            UnityEngine.Object.Destroy(obj);
-        }
+        if (!CachedPrefabs.TryGetValue(typeName, out var obj))
+            throw new InvalidOperationException($"Unable to uncache a prefab of type {typeof(T).Name} that hasn't been cached!");
+
+        CachedTypes.Remove(typeName);
+        CachedPrefabs.Remove(typeName);
+
+        if (obj) UnityEngine.Object.Destroy(obj);
     }
+
 
     /// <summary>
     /// Clears all cached prefabs, removing their references and destroying their instances.
     /// </summary>
     public static void UncacheAll()
     {
-        CachedTypes.Clear();
-        foreach (var obj in Cached.Values)
+        foreach (var obj in CachedPrefabs.Values)
         {
-            UnityEngine.Object.Destroy(obj);
+            if (obj) UnityEngine.Object.Destroy(obj);
         }
-        Cached.Clear();
+
+        CachedPrefabs.Clear();
+        CachedTypes.Clear();
     }
 }
