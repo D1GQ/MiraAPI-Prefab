@@ -9,7 +9,7 @@ namespace MiraAPI.Utilities;
 // Original code from: https://github.com/D1GQ/AmongUsPrefabsAPI
 
 /// <summary>
-/// A base class for handling prefab management within Among Us.
+/// A static class for handling prefab management within Among Us.
 /// This class provides functionality to load, cache, retrieve, and remove prefabs dynamically.
 /// It ensures that prefabs can be instantiated, stored, and managed efficiently without requiring Unity Editor access.
 /// About any Among Us MonoBehavior/Component prefab can be loaded from the game.
