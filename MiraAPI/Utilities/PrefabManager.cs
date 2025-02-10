@@ -134,7 +134,6 @@ public static class PrefabManager
         if (obj) UnityEngine.Object.Destroy(obj);
     }
 
-
     /// <summary>
     /// Clears all cached prefabs, removing their references and destroying their instances.
     /// </summary>
